@@ -1,0 +1,1717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AirWise – Know Your Air. Plan Your Day.</title>
+
+<!-- Fonts (if the fonts fail to load, the browser uses the fallback fonts automatically) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;700&display=swap" rel="stylesheet">
+
+<!--
+  =====================================================================
+  AirWise – Air Quality Index website
+  One file, three parts:
+    1. HTML  (the 4 pages: Home, Today's AQI, Health, About)
+    2. CSS   (the design)
+    3. JavaScript (API calls + AQI analysis + drawing the page)
+
+  Data: Open-Meteo Air Quality, Geocoding and Weather APIs.
+  These APIs are free and need NO API KEY, so there is no secret key
+  to hide. Open this file in a browser with internet access.
+  =====================================================================
+-->
+
+<style>
+/* =====================================================================
+   CSS — DESIGN
+   ===================================================================== */
+
+/* ---------- Colors and basic settings (change the look here) ---------- */
+:root {
+  --ink: #0c2a33;          /* main text */
+  --muted: #557078;        /* softer text */
+  --paper: #f3fbf8;        /* page background */
+  --card: #ffffff;
+  --line: #dcebe8;
+  --sky: #38bdf8;
+  --leaf: #34d399;
+  --brand: linear-gradient(120deg, #34d399, #38bdf8);
+  --shadow: 0 14px 36px rgba(12, 42, 51, 0.09);
+  --aqi-color: #22c55e;    /* JavaScript changes these three when AQI changes */
+  --aqi-ink: #15803d;
+  --aqi-soft: #22c55e26;
+}
+
+* { box-sizing: border-box; margin: 0; }
+[hidden] { display: none !important; }
+
+body {
+  font-family: "Figtree", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--ink);
+  line-height: 1.55;
+  background:
+    radial-gradient(900px 480px at 8% -8%, #c8f4e0 0%, transparent 62%),
+    radial-gradient(760px 460px at 100% 0%, #cdeafc 0%, transparent 58%),
+    var(--paper);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+main { flex: 1; }
+
+h1, h2, h3 {
+  font-family: "Bricolage Grotesque", "Figtree", system-ui, sans-serif;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+}
+h2 { font-size: clamp(1.5rem, 3.4vw, 2rem); font-weight: 800; }
+h3 { font-size: 1.1rem; font-weight: 600; }
+p { max-width: 70ch; }
+a { color: inherit; }
+small, .small { font-size: 0.875rem; }
+.tiny { font-size: 0.8rem; }
+.muted { color: var(--muted); }
+
+:focus-visible { outline: 3px solid #0284c7; outline-offset: 2px; }
+
+.container { width: min(1120px, 100% - 32px); margin-inline: auto; }
+
+/* ---------- Header + navigation ---------- */
+.site-header {
+  position: sticky; top: 0; z-index: 20;
+  background: rgba(243, 251, 248, 0.86);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line);
+}
+.header-inner {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px 16px; flex-wrap: wrap; padding: 12px 0;
+}
+.brand {
+  display: flex; align-items: center; gap: 10px; text-decoration: none;
+  font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: 1.5rem;
+  letter-spacing: -0.03em;
+}
+.brand-logo {
+  width: 36px; height: 36px; border-radius: 12px; background: var(--brand);
+  display: grid; place-items: center; font-size: 1.15rem;
+}
+.nav { display: flex; gap: 4px; }
+.nav a {
+  padding: 9px 16px; border-radius: 999px; text-decoration: none;
+  font-weight: 700; color: var(--muted); transition: background 0.2s, color 0.2s;
+}
+.nav a:hover { color: var(--ink); background: #e6f4f0; }
+.nav a.active { background: var(--brand); color: var(--ink); }
+
+/* ---------- Buttons ---------- */
+.btn {
+  border: 0; font: inherit; font-weight: 700; border-radius: 999px;
+  padding: 13px 24px; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+}
+.btn:hover { transform: translateY(-1px); }
+.btn:disabled { opacity: 0.6; cursor: wait; transform: none; }
+.btn-primary { background: var(--brand); color: var(--ink); }
+.btn-ghost { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+
+/* ---------- Hero (top of Home page) ---------- */
+.hero-panel {
+  margin-top: 24px; padding: 56px 24px 40px; text-align: center;
+  border-radius: 40px; position: relative; overflow: hidden;
+  background: linear-gradient(160deg, #d9f7ea 0%, #d3edfb 62%, #f1fbff 100%);
+  border: 1px solid #fff;
+}
+.hero-panel::before, .hero-panel::after {
+  content: ""; position: absolute; border-radius: 50%; pointer-events: none;
+}
+.hero-panel::before { width: 340px; height: 340px; left: -110px; bottom: -170px; background: #34d3992e; }
+.hero-panel::after  { width: 280px; height: 280px; right: -80px; top: -120px; background: #38bdf82e; }
+.hero-panel > * { position: relative; }
+.hero-panel h1 { font-size: clamp(2.6rem, 8vw, 5rem); font-weight: 800; letter-spacing: -0.04em; }
+.hero-sub { font-size: 1.2rem; color: var(--muted); margin: 14px auto 0; }
+
+.search-box {
+  display: flex; gap: 8px; background: #fff; border-radius: 999px; padding: 8px;
+  max-width: 640px; margin: 28px auto 14px; border: 1px solid var(--line);
+  box-shadow: 0 14px 40px rgba(12, 42, 51, 0.12);
+}
+.search-box:focus-within { border-color: #0284c7; }
+.search-box input {
+  flex: 1; min-width: 0; border: 0; outline: 0; background: transparent;
+  font: inherit; font-size: 1.05rem; padding: 0 18px; color: var(--ink);
+}
+.hero-actions { margin-bottom: 14px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center; margin-top: 10px; }
+.chips-label { font-size: 0.9rem; color: var(--muted); }
+.chip {
+  border: 1px solid var(--line); background: #fff; color: var(--ink); font: inherit;
+  font-size: 0.92rem; font-weight: 500; padding: 6px 14px; border-radius: 999px; cursor: pointer;
+  transition: background 0.15s;
+}
+.chip:hover { background: #e6f7f1; }
+.chip.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+/* ---------- Loading + error messages ---------- */
+.loading {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  margin: 28px auto 0; color: var(--muted); font-weight: 500;
+}
+.spinner {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 3px solid #cfe8e1; border-top-color: #0ea5e9; animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.error-box {
+  margin: 24px auto 0; max-width: 720px; padding: 16px 20px; border-radius: 18px;
+  background: #fff1f1; border: 1px solid #fecaca; color: #991b1b; font-weight: 500;
+}
+.empty-note {
+  margin: 40px auto; padding: 28px; text-align: center; border-radius: 24px;
+  background: #fff; border: 2px dashed #bfe3d8; color: var(--muted);
+}
+
+/* ---------- Layout helpers ---------- */
+.stack > * + * { margin-top: 28px; }
+.grid-2 { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 24px; }
+.grid-auto { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.card {
+  background: var(--card); border-radius: 28px; padding: 28px;
+  border: 1px solid var(--line); box-shadow: var(--shadow);
+}
+.section-head { margin-bottom: 18px; }
+.section-head p { color: var(--muted); margin-top: 6px; }
+.page-pad { padding: 36px 0 56px; }
+.page-head { margin-bottom: 26px; }
+.page-head h1 { font-size: clamp(2rem, 5.5vw, 3.2rem); font-weight: 800; letter-spacing: -0.03em; }
+.page-head .loc { font-size: 1.2rem; font-weight: 700; margin-top: 6px; }
+
+.badge {
+  display: inline-block; padding: 5px 14px; border-radius: 999px;
+  font-weight: 700; font-size: 0.9rem;
+}
+.badge-big { font-size: 1.05rem; padding: 7px 18px; }
+
+/* ---------- Current AQI card (the big one) ---------- */
+.aqi-card {
+  position: relative; overflow: hidden; padding-left: 36px;
+  background: linear-gradient(150deg, #fff 35%, var(--aqi-soft) 100%);
+  transition: background 0.5s;
+}
+.aqi-card::before {   /* colored strip on the left shows the AQI category */
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 10px; background: var(--aqi-color);
+}
+.card-label { font-weight: 700; font-size: 1.05rem; color: var(--muted); }
+.aqi-row { display: flex; align-items: flex-end; gap: 12px 32px; flex-wrap: wrap; margin-top: 8px; }
+.aqi-word { font-weight: 700; color: var(--muted); }
+.aqi-number {
+  font-family: "Bricolage Grotesque", sans-serif; font-weight: 800;
+  font-size: clamp(5.5rem, 20vw, 9.5rem); line-height: 0.9; letter-spacing: -0.05em;
+  color: var(--aqi-ink);
+}
+.aqi-meta { display: grid; gap: 10px; padding-bottom: 8px; }
+.aqi-meta p { color: var(--ink); }
+
+/* colored scale bar with a marker */
+.scale { position: relative; margin-top: 26px; }
+.scale-bar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; }
+.scale-marker {
+  position: absolute; top: -6px; width: 5px; height: 24px; left: 0;
+  background: var(--ink); border-radius: 4px; transform: translateX(-50%);
+  box-shadow: 0 0 0 3px #fff; transition: left 1s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.scale-labels { position: relative; height: 18px; margin-top: 10px; font-size: 0.75rem; color: var(--muted); }
+.scale-labels span { position: absolute; transform: translateX(-50%); }
+.aqi-source { margin-top: 18px; }
+
+/* ---------- Best time / worst time cards ---------- */
+.best-col { display: grid; gap: 24px; align-content: start; }
+.best-card { border: 0; }
+.best-card.good { background: var(--brand); color: var(--ink); }
+.best-card.none { background: #eef3f2; }
+.best-card.warn { background: #fff4e5; border: 1px solid #fed7aa; }
+.best-card.calm { background: #ecfdf5; border: 1px solid #a7f3d0; }
+.best-card .card-label { color: inherit; opacity: 0.85; }
+.period { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: clamp(1.6rem, 4.5vw, 2.2rem); margin: 6px 0 8px; letter-spacing: -0.03em; }
+.period-aqi { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-weight: 500; }
+.period-aqi strong { font-size: 1.6rem; font-family: "Bricolage Grotesque", sans-serif; }
+.mini-badge { font-style: normal; font-size: 0.8rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
+.period-note { margin-top: 10px; }
+
+/* ---------- Hourly bar chart ---------- */
+.chart-wrap { position: relative; padding-left: 34px; }
+.plot { position: relative; height: 270px; }
+.chart-wrap.compact .plot { height: 220px; }
+.grid-line { position: absolute; left: 0; right: 0; border-top: 1px dashed #d3e4e0; }
+.grid-line span {
+  position: absolute; left: -34px; top: -9px; width: 28px; text-align: right;
+  font-size: 0.72rem; color: var(--muted);
+}
+.bars {
+  position: absolute; inset: 0; display: grid; gap: 4px; align-items: end;
+  grid-template-columns: repeat(24, 1fr); grid-template-rows: 100%;
+}
+.bar-col {
+  border: 0; background: transparent; padding: 0; margin: 0; font: inherit; cursor: pointer;
+  height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+  border-radius: 10px; transition: background 0.15s;
+}
+.bar-col:hover { background: #0ea5e914; }
+.bar-col.selected { background: #0ea5e91f; }
+.bar-col.now { box-shadow: inset 0 0 0 2px #0c2a33; }
+.bar-col.past .bar { opacity: 0.5; }
+.bar { width: 100%; min-height: 3px; height: 0; border-radius: 8px 8px 3px 3px; transition: height 0.8s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.bar-value { display: none; font-size: 0.66rem; font-weight: 700; color: var(--muted); margin-bottom: 3px; }
+.chart-wrap.show-values .bar-value { display: block; }
+.labels { display: grid; grid-template-columns: repeat(24, 1fr); gap: 4px; margin-top: 8px; }
+.labels span { display: flex; justify-content: center; white-space: nowrap; font-size: 0.72rem; color: var(--muted); }
+.labels span.minor { visibility: hidden; }
+.labels span.now { color: var(--ink); font-weight: 800; }
+
+.detail {
+  margin-top: 20px; padding: 16px 22px; border-radius: 20px; background: #f4fbf9;
+  border-left: 10px solid var(--c, #22c55e);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 32px;
+}
+.detail-time { font-weight: 700; color: var(--muted); }
+.detail-aqi { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: 2.2rem; line-height: 1.1; }
+.detail-text { display: grid; gap: 6px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 18px; font-size: 0.82rem; color: var(--muted); }
+.legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.legend-item i { width: 12px; height: 12px; border-radius: 4px; display: inline-block; }
+
+/* ---------- Weather + pollutants ---------- */
+.weather { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.weather-item { padding: 16px; border-radius: 20px; background: #f1f9fd; text-align: center; }
+.weather-item .icon { font-size: 1.6rem; }
+.weather-item strong { display: block; font-family: "Bricolage Grotesque", sans-serif; font-size: 1.5rem; }
+.weather-item span { font-size: 0.85rem; color: var(--muted); }
+
+.pollutant { padding: 18px; border-radius: 20px; background: #f6fbf9; border: 1px solid var(--line); }
+.pollutant.main { background: #fff; }
+.pollutant-value { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: 1.9rem; margin: 4px 0; }
+.pollutant-value small { font-family: "Figtree", sans-serif; font-weight: 500; font-size: 0.8rem; color: var(--muted); }
+.pollutant-desc { font-size: 0.92rem; color: var(--muted); }
+.pollutant-who { font-size: 0.8rem; margin-top: 8px; color: #0369a1; font-weight: 500; }
+
+/* ---------- Health groups + activities ---------- */
+.group-card { padding: 22px; border-radius: 22px; background: #fff; border: 1px solid var(--line); border-top: 6px solid var(--c, #22c55e); }
+.group-card .icon { font-size: 1.8rem; }
+.group-card h3 { margin: 6px 0; }
+.group-card p { color: var(--muted); font-size: 0.95rem; }
+
+.activity { padding: 20px; border-radius: 22px; background: #fff; border: 1px solid var(--line); display: grid; gap: 8px; }
+.activity .icon { font-size: 1.9rem; }
+.pill { display: inline-block; width: fit-content; padding: 4px 12px; border-radius: 999px; font-weight: 700; font-size: 0.85rem; }
+.pill.ok { background: #d1fae5; color: #065f46; }
+.pill.caution { background: #fef3c7; color: #92400e; }
+.pill.avoid { background: #fee2e2; color: #991b1b; }
+.activity p { font-size: 0.9rem; color: var(--muted); }
+
+/* ---------- AI advisor ---------- */
+.advisor { background: linear-gradient(150deg, #0c2a33, #0f4c5c); color: #fff; border: 0; }
+.advisor h2 { color: #fff; }
+.advisor .section-head p { color: #b6d5da; }
+.advisor .chip { background: transparent; color: #fff; border-color: #ffffff55; padding: 9px 16px; font-size: 0.95rem; }
+.advisor .chip:hover { background: #ffffff1f; }
+.advisor .chip.active { background: var(--brand); color: var(--ink); border-color: transparent; }
+.advisor-answer { margin-top: 20px; padding: 20px 22px; border-radius: 20px; background: #ffffff14; min-height: 96px; }
+.advisor-answer h3 { color: var(--leaf); margin-bottom: 6px; }
+.advisor-answer.fresh { animation: pop 0.4s ease; }
+@keyframes pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.advisor .tiny { color: #9fc3c9; margin-top: 12px; }
+
+/* ---------- Page 3: Health ---------- */
+.live-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; }
+.live-banner .big { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: 3.4rem; line-height: 1; }
+.level-card {
+  position: relative; padding: 20px; border-radius: 22px; background: #fff;
+  border: 1px solid var(--line); border-left: 10px solid var(--c);
+}
+.level-card.current { box-shadow: 0 0 0 3px var(--ink); }
+.level-range { font-weight: 700; color: var(--muted); font-size: 0.9rem; }
+.level-card h3 { margin: 2px 0 6px; }
+.level-card p { font-size: 0.93rem; color: var(--muted); }
+.here-tag { display: inline-block; margin-top: 10px; padding: 3px 10px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 0.78rem; font-weight: 700; }
+.who-card { padding: 20px; border-radius: 22px; background: #fff; border: 1px solid var(--line); }
+.who-card .icon { font-size: 1.7rem; }
+.who-card p { font-size: 0.93rem; color: var(--muted); margin-top: 4px; }
+.notice { font-size: 0.9rem; color: var(--muted); padding: 14px 18px; border-radius: 16px; background: #eef7f4; }
+
+/* ---------- Page 2: Today stats ---------- */
+.stat-card { padding: 22px; border-radius: 24px; background: #fff; border: 1px solid var(--line); border-top: 8px solid var(--c, #22c55e); }
+.stat-card h3 { color: var(--muted); font-weight: 600; font-size: 1rem; }
+.stat-time { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: 1.7rem; margin-top: 6px; }
+.stat-aqi { margin-top: 4px; }
+.stat-aqi strong { font-size: 1.3rem; }
+.stat-card .badge { margin-top: 10px; }
+
+/* ---------- Page 4: About ---------- */
+.flow { list-style: none; padding: 0; display: grid; gap: 0; max-width: 620px; }
+.flow li { display: flex; gap: 16px; align-items: center; padding: 16px 20px; border-radius: 22px; background: #fff; border: 1px solid var(--line); position: relative; }
+.flow li + li { margin-top: 30px; }
+.flow li + li::before { content: "↓"; position: absolute; top: -30px; left: 34px; font-size: 1.4rem; line-height: 30px; color: #0284c7; font-weight: 700; }
+.flow .flow-icon { width: 46px; height: 46px; border-radius: 16px; background: var(--brand); display: grid; place-items: center; font-size: 1.4rem; flex: none; }
+.flow h3 { font-size: 1.05rem; }
+.flow p { font-size: 0.9rem; color: var(--muted); }
+.flow code, .code-list code { background: #eaf6f2; padding: 1px 7px; border-radius: 8px; font-size: 0.85rem; }
+.tech-card { padding: 20px; border-radius: 22px; background: #fff; border: 1px solid var(--line); }
+.tech-card p { font-size: 0.93rem; color: var(--muted); margin-top: 4px; }
+.code-list { list-style: none; padding: 0; display: grid; gap: 10px; }
+.about-list { padding-left: 20px; display: grid; gap: 8px; }
+
+/* ---------- Footer ---------- */
+.site-footer { border-top: 1px solid var(--line); padding: 22px 0 30px; color: var(--muted); font-size: 0.88rem; margin-top: 20px; }
+.site-footer p { max-width: none; }
+.site-footer a { color: #0369a1; }
+
+/* ---------- Responsive (phones, tablets, laptops) ---------- */
+@media (max-width: 900px) {
+  .grid-2 { grid-template-columns: 1fr; }
+  .chart-wrap.show-values .bar-value { display: none; }   /* too crowded on small screens */
+}
+@media (min-width: 901px) {
+  .labels span.minor { visibility: visible; }   /* show every hour label on big screens */
+}
+@media (max-width: 600px) {
+  .card { padding: 22px 18px; border-radius: 24px; }
+  .aqi-card { padding-left: 28px; }
+  .hero-panel { padding: 40px 16px 30px; border-radius: 30px; }
+  .search-box { flex-direction: column; border-radius: 28px; }
+  .search-box input { padding: 12px 16px; }
+  .nav { width: 100%; justify-content: space-between; }
+  .nav a { flex: 1; text-align: center; padding: 9px 6px; font-size: 0.9rem; }
+  .bars, .labels { gap: 2px; }
+  .weather { grid-template-columns: 1fr; }
+  .plot { height: 230px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+
+<body>
+
+<!-- =====================================================================
+     HTML — HEADER + NAVIGATION
+     ===================================================================== -->
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="#home"><span class="brand-logo">🍃</span> AirWise</a>
+    <nav class="nav" aria-label="Main navigation">
+      <a href="#home" data-page="home">Home</a>
+      <a href="#today" data-page="today">Today's AQI</a>
+      <a href="#health" data-page="health">Health</a>
+      <a href="#about" data-page="about">About</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<!-- =====================================================================
+     PAGE 1 — HOME / DASHBOARD
+     ===================================================================== -->
+<section class="page" id="page-home">
+  <div class="container">
+
+    <div class="hero-panel">
+      <h1>Know Your Air.<br>Plan Your Day.</h1>
+      <p class="hero-sub">Check the air quality before you step outside.</p>
+
+      <form class="search-box" id="search-form">
+        <input id="city-input" type="text" placeholder="Search for a city…" autocomplete="off" aria-label="City name">
+        <button type="submit" class="btn btn-primary" id="search-btn">Check Air Quality</button>
+      </form>
+
+      <div class="hero-actions">
+        <button type="button" class="btn btn-ghost" id="geo-btn">📍 Use My Location</button>
+      </div>
+
+      <div class="chips">
+        <span class="chips-label">Try:</span>
+        <button type="button" class="chip" data-city="Kathmandu">Kathmandu</button>
+        <button type="button" class="chip" data-city="Pokhara">Pokhara</button>
+        <button type="button" class="chip" data-city="Bhaktapur">Bhaktapur</button>
+       
+      </div>
+      <div class="chips" id="alt-matches" hidden></div>
+
+      <div class="loading" id="loading" hidden><div class="spinner"></div> Fetching real air-quality data…</div>
+      <div class="error-box" id="error-box" role="alert" hidden></div>
+    </div>
+
+    <!-- Everything below is hidden until real data arrives -->
+    <div id="results" class="stack page-pad" hidden>
+
+      <!-- Current AQI + best time -->
+      <div class="grid-2">
+        <article class="card aqi-card" id="aqi-card">
+          <p class="card-label" id="place-name"></p>
+          <div class="aqi-row">
+            <div>
+              <div class="aqi-word">AQI</div>
+              <div class="aqi-number" id="aqi-number">--</div>
+            </div>
+            <div class="aqi-meta">
+              <span class="badge badge-big" id="aqi-category"></span>
+              <p id="aqi-tip"></p>
+              <p class="small muted">Updated: <span id="aqi-updated"></span></p>
+            </div>
+          </div>
+          <div class="scale" id="aqi-scale"></div>
+          <p class="tiny muted aqi-source">AQI standard: US EPA AQI (0–500 scale). Data source: Open-Meteo Air Quality API.</p>
+        </article>
+
+        <div class="best-col">
+          <article class="card best-card" id="best-card"></article>
+          <article class="card best-card" id="worst-card"></article>
+        </div>
+      </div>
+
+      <!-- Hourly chart -->
+      <section class="card">
+        <div class="section-head">
+          <h2>Today's Hourly AQI</h2>
+          <p>Each bar is one hour. Taller means more polluted. Tap a bar to see that hour.</p>
+        </div>
+        <div class="chart-wrap compact" id="home-chart"></div>
+        <div class="detail" id="home-detail"></div>
+        <div class="legend"></div>
+      </section>
+
+      <!-- Weather -->
+      <section class="card" id="weather-card">
+        <div class="section-head"><h2>Weather Right Now</h2></div>
+        <div class="weather" id="weather"></div>
+      </section>
+
+      <!-- Pollutants -->
+      <section>
+        <div class="section-head">
+          <h2>Main Pollutants</h2>
+          <p>These are the particles and gases that make up the AQI.</p>
+        </div>
+        <div class="grid-3" id="pollutants-main"></div>
+        <div id="pollutants-more-wrap" style="margin-top:24px">
+          <h3 style="margin-bottom:12px">Other pollutants</h3>
+          <div class="grid-3" id="pollutants-more"></div>
+        </div>
+      </section>
+
+      <!-- Who should be careful -->
+      <section>
+        <div class="section-head">
+          <h2>Who Should Be Careful?</h2>
+          <p>Advice changes with the current AQI.</p>
+        </div>
+        <div class="grid-auto" id="group-cards"></div>
+      </section>
+
+      <!-- Activities -->
+      <section>
+        <div class="section-head">
+          <h2>Can I Do My Activity Outside?</h2>
+          <p>Based on the current AQI.</p>
+        </div>
+        <div class="grid-auto" id="activity-cards"></div>
+      </section>
+
+      <!-- AI advisor (simple rule-based) -->
+      <section class="card advisor">
+        <div class="section-head">
+          <h2>🤖 AirWise AI Advisor</h2>
+          <p>Pick a question. The answer is built from today's real AQI data.</p>
+        </div>
+        <div class="chips" id="advisor-buttons" style="justify-content:flex-start"></div>
+        <div class="advisor-answer" id="advisor-answer"></div>
+        <p class="tiny">This advisor follows simple rules based on the AQI. It is general information, not medical advice.</p>
+      </section>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- =====================================================================
+     PAGE 2 — TODAY'S AQI
+     ===================================================================== -->
+<section class="page" id="page-today" hidden>
+  <div class="container page-pad">
+    <div class="page-head">
+      <h1>Today's Air Quality</h1>
+      <p class="loc" id="today-place"></p>
+      <p class="muted" id="today-date"></p>
+    </div>
+
+    <p class="empty-note">Search for a city on the Home page to see today's hourly air quality.</p>
+
+    <div id="today-content" class="stack" hidden>
+      <section class="card">
+        <div class="section-head">
+          <h2>Hourly AQI</h2>
+          <p>Bar height shows the AQI. Bar color shows the category. Tap any bar for details.</p>
+        </div>
+        <div class="chart-wrap show-values" id="today-chart"></div>
+        <div class="detail" id="today-detail"></div>
+        <div class="legend"></div>
+      </section>
+
+      <div class="grid-auto" id="today-stats"></div>
+    </div>
+  </div>
+</section>
+
+
+<!-- =====================================================================
+     PAGE 3 — HEALTH & RECOMMENDATIONS
+     ===================================================================== -->
+<section class="page" id="page-health" hidden>
+  <div class="container page-pad stack">
+    <div class="page-head" style="margin-bottom:0">
+      <h1>Health &amp; Recommendations</h1>
+      <p class="muted" style="margin-top:8px">What the numbers mean and what to do about them.</p>
+    </div>
+
+    <!-- Live banner for the selected location -->
+    <section class="card aqi-card" id="health-live" hidden>
+      <div class="live-banner">
+        <div>
+          <p class="card-label" id="health-live-place"></p>
+          <div class="big" id="health-live-aqi" style="color:var(--aqi-ink)"></div>
+        </div>
+        <div class="aqi-meta">
+          <span class="badge badge-big" id="health-live-category"></span>
+          <p id="health-live-tip"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-head"><h2>What is AQI?</h2></div>
+      <p>AQI stands for Air Quality Index. It turns many pollution measurements into one easy number. A low number means clean air. A high number means more pollution and more risk to your health.</p>
+      <p style="margin-top:10px">AirWise uses the <strong>US EPA AQI</strong>, a scale used by many apps around the world. Local government scales can use different cut-off numbers.</p>
+    </section>
+
+    <section>
+      <div class="section-head"><h2>What does each AQI level mean?</h2></div>
+      <div class="grid-3" id="levels-grid"></div>
+    </section>
+
+    <section>
+      <div class="section-head"><h2>Who is more sensitive?</h2></div>
+      <div class="grid-auto">
+        <div class="who-card"><div class="icon">👶</div><h3>Children</h3><p>Their lungs are still growing, and they breathe more air for their body size. They also play outside a lot.</p></div>
+        <div class="who-card"><div class="icon">👴</div><h3>Older adults</h3><p>Heart and lung problems are more common with age, and pollution can make them worse.</p></div>
+        <div class="who-card"><div class="icon">🫁</div><h3>People with respiratory conditions</h3><p>Asthma and similar conditions can flare up when the air is polluted.</p></div>
+        <div class="who-card"><div class="icon">👷</div><h3>Outdoor workers</h3><p>Long hours outside, often doing physical work, mean more pollution breathed in.</p></div>
+        <div class="who-card"><div class="icon">🏃</div><h3>Athletes</h3><p>Hard exercise makes you breathe faster and deeper, so more pollution reaches your lungs.</p></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head"><h2>What activities are appropriate?</h2></div>
+      <p class="empty-note" style="margin:0">Search for a city on the Home page to see live activity advice.</p>
+      <div id="health-activities-wrap" hidden>
+        <p class="muted" style="margin-bottom:16px" id="health-activities-intro"></p>
+        <div class="grid-auto" id="health-activities"></div>
+      </div>
+    </section>
+
+    <p class="notice">This page is general information based on public AQI guidance. It is not medical advice. If you have asthma or a heart or lung condition, follow your doctor's advice.</p>
+  </div>
+</section>
+
+
+<!-- =====================================================================
+     PAGE 4 — ABOUT / HOW IT WORKS
+     ===================================================================== -->
+<section class="page" id="page-about" hidden>
+  <div class="container page-pad stack">
+    <div class="page-head" style="margin-bottom:0">
+      <h1>How AirWise Works</h1>
+      <p class="muted" style="margin-top:8px">AirWise answers one question: "When should I go outside today?"</p>
+    </div>
+
+    <section>
+      <div class="section-head"><h2>From location to decision</h2></div>
+      <ol class="flow">
+        <li><div class="flow-icon">👤</div><div><h3>User</h3><p>Opens AirWise and types a city.</p></div></li>
+        <li><div class="flow-icon">📍</div><div><h3>Select Location</h3><p>The Geocoding API turns the city name into coordinates. <code>searchLocation()</code></p></div></li>
+        <li><div class="flow-icon">☁️</div><div><h3>AQI API</h3><p>We ask the Air Quality API for that place. <code>getAQIData()</code></p></div></li>
+        <li><div class="flow-icon">📊</div><div><h3>Hourly AQI Data</h3><p>We get one AQI value for every hour of today. <code>createHourlyChart()</code></p></div></li>
+        <li><div class="flow-icon">🎨</div><div><h3>AQI Analysis</h3><p>Each value is matched to a category and color. <code>getAQICategory()</code></p></div></li>
+        <li><div class="flow-icon">🕒</div><div><h3>Best Time Calculation</h3><p>We slide a 3-hour window over the day and average it. <code>findBestTime()</code></p></div></li>
+        <li><div class="flow-icon">💚</div><div><h3>Health Recommendation</h3><p>Advice for groups and activities is chosen from the AQI. <code>getRecommendation()</code></p></div></li>
+        <li><div class="flow-icon">✅</div><div><h3>User Decision</h3><p>Go now, wait for the clean window, or stay in.</p></div></li>
+      </ol>
+    </section>
+
+    <section>
+      <div class="section-head"><h2>How the best time is calculated</h2></div>
+      <ol class="about-list">
+        <li>Take the 24 hourly AQI values for today.</li>
+        <li>Look at every 3-hour window that starts now or later (for example 3 PM to 6 PM).</li>
+        <li>Average the AQI inside each window.</li>
+        <li>The window with the lowest average is the best time. The highest is the period to avoid.</li>
+        <li>If even the best window averages above 100, we say no particularly clean period was found.</li>
+      </ol>
+    </section>
+
+    <section>
+      <div class="section-head"><h2>Technologies used</h2></div>
+      <div class="grid-auto">
+        <div class="tech-card"><h3>HTML</h3><p>The structure of the four pages.</p></div>
+        <div class="tech-card"><h3>CSS</h3><p>Colors, cards, grid layout, animations and the mobile-friendly design.</p></div>
+        <div class="tech-card"><h3>JavaScript</h3><p>Fetches data with <code>fetch()</code>, does the calculations and updates the page.</p></div>
+        <div class="tech-card"><h3>Open-Meteo Air Quality API</h3><p>Current and hourly US AQI plus pollutant levels. Free, no API key.</p></div>
+        <div class="tech-card"><h3>Open-Meteo Geocoding and Weather APIs</h3><p>City search and the temperature, humidity and wind.</p></div>
+        <div class="tech-card"><h3>Chart library</h3><p>None. The bar chart is built from plain HTML and CSS, so it is easy to explain.</p></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head"><h2>Main functions in the code</h2></div>
+      <ul class="code-list">
+        <li><code>searchLocation(city)</code> finds the coordinates of a city.</li>
+        <li><code>getAQIData(place)</code> downloads the air-quality data.</li>
+        <li><code>displayAQI()</code> shows the big AQI card.</li>
+        <li><code>createHourlyChart()</code> draws the hourly bar chart.</li>
+        <li><code>findBestTime()</code> finds the cleanest and dirtiest 3-hour windows.</li>
+        <li><code>getRecommendation(aqi)</code> returns the advice for an AQI value.</li>
+        <li><code>getAdvice(question)</code> builds the AI Advisor answer.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <div class="section-head"><h2>About the data</h2></div>
+      <p>Air-quality values come from the Open-Meteo Air Quality API, which serves model data from the Copernicus Atmosphere Monitoring Service (CAMS). It is a computer model of the atmosphere, not a reading from a sensor on your street, so it can differ from a local monitoring station. If the data cannot be loaded, AirWise shows an error instead of fake numbers.</p>
+      <p style="margin-top:10px">Weather and air-quality data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a>.</p>
+    </section>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <p id="footer-source">Data source: Open-Meteo Air Quality API (CAMS model data). AQI standard: US EPA AQI.</p>
+  </div>
+</footer>
+
+
+<script>
+/* =====================================================================
+   JAVASCRIPT — HOW THE PROGRAM WORKS
+   1. Settings and AQI categories
+   2. Helper functions (formatting)
+   3. API functions          (searchLocation, getAQIData, getWeatherData)
+   4. Analysis functions     (findBestTime, getRecommendation, ...)
+   5. Display functions      (displayAQI, createHourlyChart, ...)
+   6. Program flow           (loadLocation, buttons, navigation)
+   ===================================================================== */
+
+
+/* ---------------------------------------------------------------------
+   1. SETTINGS AND AQI CATEGORIES
+   --------------------------------------------------------------------- */
+// API addresses (all from Open-Meteo, free and no API key needed)
+const GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search";
+const AIR_URL       = "https://air-quality-api.open-meteo.com/v1/air-quality";
+const WEATHER_URL   = "https://api.open-meteo.com/v1/forecast";
+
+const DEFAULT_CITY  = "Kathmandu"; // loaded automatically when the page opens
+const WINDOW_HOURS  = 3;           // length of the "best time" window
+const CLEAN_LIMIT   = 100;         // a window above this average is not "clean"
+
+// The six US EPA AQI categories. Each one has a color and advice text.
+const AQI_LEVELS = [
+  { name: "Good", range: "0–50", max: 50, color: "#22c55e", ink: "#15803d", badgeText: "#052e16",
+    meaning: "Air pollution poses little or no risk. Enjoy the outdoors.",
+    tip: "Air quality is good. A great time for outdoor activities." },
+  { name: "Moderate", range: "51–100", max: 100, color: "#facc15", ink: "#a16207", badgeText: "#422006",
+    meaning: "Air quality is acceptable. A few unusually sensitive people may notice symptoms.",
+    tip: "Air quality is acceptable. Unusually sensitive people should consider shorter outdoor exertion." },
+  { name: "Unhealthy for Sensitive Groups", range: "101–150", max: 150, color: "#fb923c", ink: "#c2410c", badgeText: "#431407",
+    meaning: "People who are sensitive to air pollution may feel effects. Most other people are less likely to.",
+    tip: "Consider reducing prolonged outdoor activity, especially if you are sensitive to air pollution." },
+  { name: "Unhealthy", range: "151–200", max: 200, color: "#ef4444", ink: "#b91c1c", badgeText: "#ffffff",
+    meaning: "Everyone may begin to feel effects. Sensitive groups may feel more serious ones.",
+    tip: "Everyone should reduce prolonged or heavy outdoor exertion." },
+  { name: "Very Unhealthy", range: "201–300", max: 300, color: "#a855f7", ink: "#7e22ce", badgeText: "#ffffff",
+    meaning: "This is a health alert. The risk is higher for everyone.",
+    tip: "Avoid outdoor exertion. Stay indoors if you can." },
+  { name: "Hazardous", range: "301+", max: Infinity, color: "#9f1239", ink: "#881337", badgeText: "#ffffff",
+    meaning: "Emergency conditions. Everyone is likely to be affected.",
+    tip: "Health emergency conditions. Stay indoors and avoid outdoor activity." }
+];
+
+// Used when an hour has no data
+const NO_DATA_LEVEL = { name: "No data", color: "#cbd5e1", ink: "#64748b", badgeText: "#0f172a", tip: "No data for this hour." };
+
+// Pollutants we show. "main" ones get big cards, the others go under "Other pollutants".
+const POLLUTANTS = [
+  { key: "pm2_5", name: "PM2.5", main: true, who: 15, desc: "Fine particles that can enter deep into the lungs." },
+  { key: "pm10", name: "PM10", main: true, who: 45, desc: "Larger airborne particles such as dust and smoke." },
+  { key: "ozone", name: "O₃", main: true, desc: "Ground-level ozone. It can irritate the airways, mostly on hot, sunny days." },
+  { key: "nitrogen_dioxide", name: "NO₂", desc: "Comes mainly from vehicle exhaust and burning fuel." },
+  { key: "sulphur_dioxide", name: "SO₂", desc: "Comes from burning coal and oil in industry." },
+  { key: "carbon_monoxide", name: "CO", desc: "A colorless gas from incomplete burning of fuel." }
+];
+
+// Activities. "okUntil" and "cautionUntil" are AQI limits:
+//   AQI <= okUntil        -> Suitable
+//   AQI <= cautionUntil   -> Use caution
+//   above that            -> Avoid prolonged activity
+// Hard exercise has lower limits because you breathe much more air.
+const ACTIVITIES = [
+  { id: "running", icon: "🏃", name: "Running",        noun: "a run",         okUntil: 50,  cautionUntil: 100 },
+  { id: "cycling", icon: "🚴", name: "Cycling",        noun: "a ride",        okUntil: 50,  cautionUntil: 100 },
+  { id: "walking", icon: "🚶", name: "Walking",        noun: "a walk",        okUntil: 100, cautionUntil: 150 },
+  { id: "sports",  icon: "⚽", name: "Outdoor Sports", noun: "outdoor sports", okUntil: 50,  cautionUntil: 100 },
+  { id: "work",    icon: "👷", name: "Outdoor Work",   noun: "outdoor work",  okUntil: 100, cautionUntil: 150 }
+];
+
+// Advice for each group. The 4 sentences match 4 AQI ranges:
+// [0-50, 51-100, 101-150, 151+]
+const GROUPS = [
+  { id: "children", icon: "👶", name: "Children", advice: [
+    "Air is good. Children can play outside normally.",
+    "Fine for most children. Those with asthma may want lighter play.",
+    "Consider reducing prolonged outdoor activity, especially hard play and sports.",
+    "Keep outdoor play short, or move activities indoors." ] },
+  { id: "adults", icon: "🧑", name: "General Adults", advice: [
+    "A great day to be outdoors.",
+    "Air is acceptable. Most adults can go about their day normally.",
+    "Healthy adults are usually fine, but take breaks and ease off long, hard efforts.",
+    "Reduce long or heavy outdoor exertion. An N95 or FFP2 mask can help if you must be out for long." ] },
+  { id: "older", icon: "👴", name: "Older Adults", advice: [
+    "Good conditions for a walk.",
+    "Generally fine. If you have a heart or lung condition, notice how you feel.",
+    "Consider shorter outdoor time and avoid strenuous activity.",
+    "Stay indoors as much as you can and keep outdoor trips short." ] },
+  { id: "exercisers", icon: "🏃", name: "Outdoor Exercisers", advice: [
+    "Ideal for training. Hard exercise makes you breathe more air, so clean air matters.",
+    "OK for most workouts. Hard exercise increases the air you breathe, so check the AQI before running or cycling.",
+    "Move hard workouts indoors, or make them shorter and easier.",
+    "Avoid outdoor exercise today. Train indoors." ] }
+];
+
+// The AI Advisor questions
+const ADVISOR_QUESTIONS = [
+  { id: "running",  label: "Can I run today?" },
+  { id: "cycling",  label: "Can I cycle today?" },
+  { id: "children", label: "Is it safe for children?" },
+  { id: "when",     label: "When should I go outside?" }
+];
+
+// The program remembers the current data here
+let airData = null;            // all data for the selected location
+let advisorQuestion = null;    // the question the user picked
+let latestRequest = 0;         // stops old requests from overwriting new ones
+
+
+/* ---------------------------------------------------------------------
+   2. HELPER FUNCTIONS
+   --------------------------------------------------------------------- */
+// Shortcut: $("some-id") finds an element on the page
+function $(id) { return document.getElementById(id); }
+
+// 0 -> "12 AM", 15 -> "3 PM"
+function formatHour(hour) {
+  const h = hour % 24;
+  const suffix = h < 12 ? "AM" : "PM";
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return hour12 + " " + suffix;
+}
+
+// 15 -> "3:00 PM"
+function formatHourFull(hour) {
+  return formatHour(hour).replace(" ", ":00 ");
+}
+
+// { start: 7, end: 10 } -> "7:00 AM – 10:00 AM"
+function formatPeriod(period) {
+  return formatHourFull(period.start) + " – " + formatHourFull(period.end);
+}
+
+function formatNumber(value) {
+  return value >= 100 ? String(Math.round(value)) : String(Math.round(value * 10) / 10);
+}
+
+function minutesAgoText(minutes) {
+  if (minutes < 2) return "just now";
+  if (minutes < 60) return minutes + " minutes ago";
+  const hours = Math.round(minutes / 60);
+  return hours + (hours === 1 ? " hour ago" : " hours ago");
+}
+
+function showLoading(isLoading) {
+  $("loading").hidden = !isLoading;
+  $("search-btn").disabled = isLoading;
+}
+function showError(message) {
+  $("error-box").textContent = message;
+  $("error-box").hidden = false;
+}
+function hideError() { $("error-box").hidden = true; }
+
+// Count the big number up from 0 (a small animation)
+function animateNumber(element, target) {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    element.textContent = target;
+    return;
+  }
+  const duration = 900;
+  const startTime = performance.now();
+  function step(now) {
+    const progress = Math.min((now - startTime) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    element.textContent = Math.round(target * eased);
+    if (progress < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+
+/* ---------------------------------------------------------------------
+   3. API FUNCTIONS — getting real data from the internet
+   --------------------------------------------------------------------- */
+
+// Step 1: turn a city name ("Kathmandu") into coordinates
+async function searchLocation(cityName) {
+  const url = GEOCODING_URL + "?name=" + encodeURIComponent(cityName) + "&count=5&language=en&format=json";
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("Location search failed (error " + response.status + "). Please try again.");
+  const data = await response.json();
+
+  if (!data.results || data.results.length === 0) {
+    throw new Error('We could not find "' + cityName + '". Check the spelling or try a nearby city.');
+  }
+  // Keep only what we need
+  return data.results.map(function (r) {
+    return { name: r.name, country: r.country || "", region: r.admin1 || "", latitude: r.latitude, longitude: r.longitude };
+  });
+}
+
+// Step 2: get the AQI (current + every hour of today) for a place
+async function getAQIData(place) {
+  const params = new URLSearchParams({
+    latitude: place.latitude,
+    longitude: place.longitude,
+    current: "us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide,sulphur_dioxide,carbon_monoxide",
+    hourly: "us_aqi",
+    timezone: "auto",      // use the place's own local time
+    forecast_days: 1       // only today
+  });
+  const response = await fetch(AIR_URL + "?" + params.toString());
+  if (!response.ok) throw new Error("The air-quality service returned an error (" + response.status + "). Please try again in a moment.");
+  const data = await response.json();
+
+  if (!data.current || !data.hourly || !data.hourly.time) {
+    throw new Error("The air-quality service has no data for this place.");
+  }
+  return data;
+}
+
+// Step 3 (optional): weather. If it fails we simply skip the weather card.
+async function getWeatherData(place) {
+  try {
+    const params = new URLSearchParams({
+      latitude: place.latitude,
+      longitude: place.longitude,
+      current: "temperature_2m,relative_humidity_2m,wind_speed_10m",
+      timezone: "auto"
+    });
+    const response = await fetch(WEATHER_URL + "?" + params.toString());
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.current ? data : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+
+/* ---------------------------------------------------------------------
+   4. ANALYSIS FUNCTIONS — turning numbers into advice
+   --------------------------------------------------------------------- */
+
+// AQI number -> category object (name, color, ...)
+function getAQICategory(aqi) {
+  if (aqi === null || aqi === undefined) return NO_DATA_LEVEL;
+  return AQI_LEVELS.find(function (level) { return aqi <= level.max; });
+}
+
+// AQI number -> one advice sentence
+function getRecommendation(aqi) {
+  return getAQICategory(aqi).tip;
+}
+
+// AQI number -> 0, 1, 2 or 3 (used to pick group advice)
+function getTier(aqi) {
+  if (aqi <= 50) return 0;
+  if (aqi <= 100) return 1;
+  if (aqi <= 150) return 2;
+  return 3;
+}
+
+function getGroupAdvice(groupId, aqi) {
+  const group = GROUPS.find(function (g) { return g.id === groupId; });
+  return group.advice[getTier(aqi)];
+}
+
+// Activity + AQI -> Suitable / Use caution / Avoid
+function getActivityStatus(activity, aqi) {
+  if (aqi <= activity.okUntil)      return { key: "ok",      icon: "✓", label: "Suitable" };
+  if (aqi <= activity.cautionUntil) return { key: "caution", icon: "⚠", label: "Use caution" };
+  return { key: "avoid", icon: "✕", label: "Avoid prolonged activity" };
+}
+
+// Look at every 3-hour window from startHour onward.
+// Returns the window with the lowest average (best) and highest average (worst).
+function findAveragePeriods(hourly, startHour) {
+  let best = null;
+  let worst = null;
+
+  for (let start = startHour; start + WINDOW_HOURS <= 24; start++) {
+    // the hours inside this window
+    const hoursInWindow = hourly.filter(function (h) { return h.hour >= start && h.hour < start + WINDOW_HOURS; });
+
+    // skip windows with missing data
+    const isComplete = hoursInWindow.length === WINDOW_HOURS && hoursInWindow.every(function (h) { return h.aqi !== null; });
+    if (!isComplete) continue;
+
+    const total = hoursInWindow.reduce(function (sum, h) { return sum + h.aqi; }, 0);
+    const exactAverage = total / WINDOW_HOURS;
+    const period = { start: start, end: start + WINDOW_HOURS, average: Math.round(exactAverage), exact: exactAverage };
+
+    if (best === null || exactAverage < best.exact) best = period;
+    if (worst === null || exactAverage > worst.exact) worst = period;
+  }
+  return { best: best, worst: worst };
+}
+
+// Find the best time to go outside, using the real hourly data.
+function findBestTime(hourly, currentHour) {
+  // First look only at the rest of today (from the current hour).
+  let result = findAveragePeriods(hourly, currentHour);
+  let alreadyPassed = false;
+
+  // Late in the evening there may be no 3-hour window left, so look at the whole day.
+  if (result.best === null) {
+    result = findAveragePeriods(hourly, 0);
+    alreadyPassed = true;
+  }
+
+  // Only call it "best" if the air is clean enough (average 100 or below)
+  const isClean = result.best !== null && result.best.average <= CLEAN_LIMIT;
+
+  return {
+    best: isClean ? result.best : null,   // null means "no clean period today"
+    leastPolluted: result.best,           // the lowest window, even if it is not clean
+    worst: result.worst,
+    sameWindow: result.best !== null && result.worst !== null && result.best.start === result.worst.start,
+    alreadyPassed: alreadyPassed
+  };
+}
+
+// Lowest hour, highest hour and daily average
+function findDayStats(hourly) {
+  const valid = hourly.filter(function (h) { return h.aqi !== null; });
+  if (valid.length === 0) return null;
+
+  let lowest = valid[0];
+  let highest = valid[0];
+  let total = 0;
+  valid.forEach(function (h) {
+    if (h.aqi < lowest.aqi) lowest = h;
+    if (h.aqi > highest.aqi) highest = h;
+    total += h.aqi;
+  });
+  return { lowest: lowest, highest: highest, average: Math.round(total / valid.length) };
+}
+
+// The "AI advisor": simple rules that use the real AQI numbers.
+function getAdvice(questionId) {
+  const aqi = airData.currentAQI;
+  const level = getAQICategory(aqi);
+  const info = airData.bestInfo;
+  const intro = "The current AQI is " + aqi + ". This falls into the " + level.name + " range. ";
+
+  // A sentence about the cleanest period of the day
+  let cleanerSentence;
+  if (info.best) {
+    cleanerSentence = " A cleaner period today is " + formatPeriod(info.best) + " (average AQI " + info.best.average + ").";
+  } else {
+    cleanerSentence = " No particularly clean period was found today.";
+  }
+
+  if (questionId === "running" || questionId === "cycling") {
+    const activity = ACTIVITIES.find(function (a) { return a.id === questionId; });
+    const status = getActivityStatus(activity, aqi);
+    let verdict;
+    if (status.key === "ok") {
+      verdict = "Conditions look suitable for " + activity.noun + ".";
+    } else if (status.key === "caution") {
+      verdict = "Use caution. If you are sensitive to air pollution, keep it shorter and easier than usual.";
+    } else {
+      verdict = "Avoid prolonged or intense outdoor exercise. An indoor workout is a better choice right now.";
+    }
+    return intro + verdict + cleanerSentence;
+  }
+
+  if (questionId === "children") {
+    return intro + getGroupAdvice("children", aqi) + cleanerSentence;
+  }
+
+  // "When should I go outside?"
+  let answer = intro;
+  if (info.best) {
+    answer += "The cleanest window " + (info.alreadyPassed ? "earlier today" : "still ahead today") + " is " +
+              formatPeriod(info.best) + " (average AQI " + info.best.average + ").";
+  } else if (info.leastPolluted) {
+    answer += "No particularly clean period was found today. The least polluted window is " +
+              formatPeriod(info.leastPolluted) + " (average AQI " + info.leastPolluted.average + "), so keep outdoor time short.";
+  } else {
+    answer += "There is not enough hourly data left today to find a good window.";
+  }
+  if (info.worst && info.worst.average > CLEAN_LIMIT && !info.sameWindow) {
+    answer += " Try to avoid " + formatPeriod(info.worst) + " (average AQI " + info.worst.average + ").";
+  }
+  return answer;
+}
+
+
+/* ---------------------------------------------------------------------
+   5. DISPLAY FUNCTIONS — putting the data on the page
+   --------------------------------------------------------------------- */
+
+// Turn the raw API answers into one tidy object that the rest of the code uses
+function buildAirData(place, air, weather) {
+  // 24 objects like { hour: 15, aqi: 128 }
+  const hourly = air.hourly.time.map(function (timeText, i) {
+    const value = air.hourly.us_aqi[i];
+    return { hour: Number(timeText.slice(11, 13)), aqi: value === null ? null : Math.round(value) };
+  });
+
+  const currentHour = Number(air.current.time.slice(11, 13));
+  let currentAQI = air.current.us_aqi;
+  if (currentAQI === null || currentAQI === undefined) {
+    const thisHour = hourly.find(function (h) { return h.hour === currentHour; });
+    currentAQI = thisHour ? thisHour.aqi : null;
+  }
+  if (currentAQI === null || currentAQI === undefined) {
+    throw new Error("No AQI value is available for this location right now.");
+  }
+
+  // "Updated X minutes ago": convert the place's local time to real (UTC) time first
+  const localAsUtc = Date.parse(air.current.time + "Z");
+  const realUtc = localAsUtc - (air.utc_offset_seconds || 0) * 1000;
+  const minutesAgo = Math.max(0, Math.round((Date.now() - realUtc) / 60000));
+
+  // Nice date text, e.g. "Sunday, 20 September 2026"
+  const dateParts = air.current.time.slice(0, 10).split("-").map(Number);
+  const dateText = new Date(dateParts[0], dateParts[1] - 1, dateParts[2])
+    .toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+
+  const placeLabel = [place.name, place.country].filter(Boolean).join(", ");
+
+  return {
+    place: place,
+    placeLabel: placeLabel,
+    currentAQI: Math.round(currentAQI),
+    currentHour: currentHour,
+    hourly: hourly,
+    pollutants: air.current,
+    units: air.current_units || {},
+    updatedText: minutesAgoText(minutesAgo) + " (" + air.current.time.slice(11, 16) + " local time)",
+    dateText: dateText,
+    weather: weather && weather.current ? { current: weather.current, units: weather.current_units || {} } : null,
+    bestInfo: findBestTime(hourly, currentHour),
+    stats: findDayStats(hourly)
+  };
+}
+
+// Draw the colored AQI scale (0 to 350+) with a marker
+function drawScale(element, aqi) {
+  const boundaries = [0, 50, 100, 150, 200, 300, 350];
+  const total = 350;
+  let barHtml = "";
+  let labelHtml = "";
+  AQI_LEVELS.forEach(function (level, i) {
+    const width = boundaries[i + 1] - boundaries[i];
+    barHtml += '<span style="flex:' + width + ';background:' + level.color + '"></span>';
+  });
+  [0, 50, 100, 150, 200, "300+"].forEach(function (label, i) {
+    const position = boundaries[i] / total * 100;
+    labelHtml += '<span style="left:' + position + '%">' + label + '</span>';
+  });
+  element.innerHTML = '<div class="scale-bar">' + barHtml + '</div>' +
+    '<div class="scale-marker"></div>' +
+    '<div class="scale-labels">' + labelHtml + '</div>';
+
+  const marker = element.querySelector(".scale-marker");
+  const markerPosition = Math.min(aqi, total) / total * 100;
+  setTimeout(function () { marker.style.left = markerPosition + "%"; }, 80);
+}
+
+// Big AQI card
+function displayAQI() {
+  const level = getAQICategory(airData.currentAQI);
+  const card = $("aqi-card");
+  card.style.setProperty("--aqi-color", level.color);
+  card.style.setProperty("--aqi-ink", level.ink);
+  card.style.setProperty("--aqi-soft", level.color + "26");
+
+  $("place-name").textContent = airData.placeLabel;
+  animateNumber($("aqi-number"), airData.currentAQI);
+
+  const badge = $("aqi-category");
+  badge.textContent = level.name;
+  badge.style.background = level.color;
+  badge.style.color = level.badgeText;
+
+  $("aqi-tip").textContent = getRecommendation(airData.currentAQI);
+  $("aqi-updated").textContent = airData.updatedText;
+  drawScale($("aqi-scale"), airData.currentAQI);
+}
+
+// Best time + worst time cards
+function displayBestTime() {
+  const info = airData.bestInfo;
+  const bestCard = $("best-card");
+  const worstCard = $("worst-card");
+
+  // ----- Best time -----
+  if (info.best) {
+    const level = getAQICategory(info.best.average);
+    bestCard.className = "card best-card good";
+    bestCard.innerHTML =
+      '<p class="card-label">🌤 Best Time to Go Outside</p>' +
+      '<p class="period">' + formatPeriod(info.best) + '</p>' +
+      '<p class="period-aqi"><span>Average AQI</span> <strong>' + info.best.average + '</strong> ' +
+      '<em class="mini-badge" style="background:' + level.color + ';color:' + level.badgeText + '">' + level.name + '</em></p>' +
+      '<p class="period-note">Air quality is relatively cleaner during this period.' +
+      (info.alreadyPassed ? " This window has already passed today." : "") + '</p>';
+  } else {
+    bestCard.className = "card best-card none";
+    let extra = "";
+    if (info.leastPolluted) {
+      extra = '<p class="period-note">The least polluted window is ' + formatPeriod(info.leastPolluted) +
+              ' (average AQI ' + info.leastPolluted.average + '). Keep outdoor time short.</p>';
+    }
+    bestCard.innerHTML =
+      '<p class="card-label">🌤 Best Time to Go Outside</p>' +
+      '<p class="period">No clean period today</p>' +
+      '<p class="period-note">No particularly clean period was found today.</p>' + extra;
+  }
+
+  // ----- Higher pollution period -----
+  if (info.worst && info.worst.average > CLEAN_LIMIT) {
+    const advice = info.worst.average > 150
+      ? "Avoid prolonged outdoor activity during this period."
+      : "Consider reducing prolonged outdoor activity during this period.";
+    // if every window looks the same, the whole rest of the day is the higher-pollution period
+    const periodText = info.sameWindow ? (info.alreadyPassed ? "All of today" : "Rest of today") : formatPeriod(info.worst);
+    worstCard.className = "card best-card warn";
+    worstCard.innerHTML =
+      '<p class="card-label">⚠ Higher Pollution Period</p>' +
+      '<p class="period">' + periodText + '</p>' +
+      '<p class="period-aqi"><span>Average AQI</span> <strong>' + info.worst.average + '</strong></p>' +
+      '<p class="period-note">' + advice + '</p>';
+  } else if (info.worst) {
+    worstCard.className = "card best-card calm";
+    worstCard.innerHTML =
+      '<p class="card-label">✅ Higher Pollution Period</p>' +
+      '<p class="period">None found</p>' +
+      '<p class="period-note">The air stays in the Good or Moderate range for the rest of today.</p>';
+  } else {
+    worstCard.className = "card best-card none";
+    worstCard.innerHTML =
+      '<p class="card-label">⚠ Higher Pollution Period</p>' +
+      '<p class="period-note">Not enough hourly data to find one.</p>';
+  }
+}
+
+// Show the details for one hour when a bar is clicked
+function showHourDetail(detailElement, hourData) {
+  const level = getAQICategory(hourData.aqi);
+  detailElement.style.setProperty("--c", level.color);
+
+  if (hourData.aqi === null) {
+    detailElement.innerHTML =
+      '<div><div class="detail-time">' + formatHourFull(hourData.hour) + '</div></div>' +
+      '<p>No AQI data is available for this hour.</p>';
+    return;
+  }
+  detailElement.innerHTML =
+    '<div><div class="detail-time">' + formatHourFull(hourData.hour) + '</div>' +
+    '<div class="detail-aqi">AQI ' + hourData.aqi + '</div></div>' +
+    '<div class="detail-text">' +
+      '<span class="badge" style="background:' + level.color + ';color:' + level.badgeText + '">' + level.name + '</span>' +
+      '<p><strong>Recommendation:</strong> ' + getRecommendation(hourData.aqi) + '</p>' +
+    '</div>';
+}
+
+// Draw the hourly bar chart.
+//   chartElement:  the box to draw into
+//   detailElement: the box that shows details when a bar is clicked
+//   showValues:    show the AQI number above each bar (big screens only)
+function createHourlyChart(chartElement, detailElement, hourly, currentHour, showValues) {
+  chartElement.innerHTML = "";
+  chartElement.classList.toggle("show-values", showValues);
+
+  // Work out the chart height: the biggest AQI (at least 100), plus some space on top
+  const realValues = hourly.filter(function (h) { return h.aqi !== null; }).map(function (h) { return h.aqi; });
+  const highest = Math.max(100, ...realValues);
+  const scaleMax = Math.ceil((highest * 1.1) / 50) * 50;
+  const gridStep = scaleMax > 300 ? 100 : 50;
+
+  const plot = document.createElement("div");
+  plot.className = "plot";
+
+  // Horizontal guide lines (50, 100, 150 ...)
+  for (let value = gridStep; value <= scaleMax; value += gridStep) {
+    const line = document.createElement("div");
+    line.className = "grid-line";
+    line.style.bottom = (value / scaleMax * 100) + "%";
+    line.innerHTML = "<span>" + value + "</span>";
+    plot.appendChild(line);
+  }
+
+  const barsBox = document.createElement("div");
+  barsBox.className = "bars";
+  const labelsBox = document.createElement("div");
+  labelsBox.className = "labels";
+
+  const columns = [];   // remember each bar so we can animate and select it
+
+  hourly.forEach(function (hourData) {
+    const level = getAQICategory(hourData.aqi);
+
+    // one clickable column per hour
+    const column = document.createElement("button");
+    column.type = "button";
+    column.className = "bar-col";
+    column.setAttribute("aria-label", formatHour(hourData.hour) + ": " + (hourData.aqi === null ? "no data" : "AQI " + hourData.aqi));
+    if (hourData.hour < currentHour) column.classList.add("past");
+    if (hourData.hour === currentHour) column.classList.add("now");
+
+    const valueText = document.createElement("span");
+    valueText.className = "bar-value";
+    valueText.textContent = hourData.aqi === null ? "" : hourData.aqi;
+
+    // the bar: height = AQI, color = category
+    const bar = document.createElement("div");
+    bar.className = "bar";
+    bar.style.background = level.color;
+    const heightPercent = hourData.aqi === null ? 0 : hourData.aqi / scaleMax * 100;
+
+    column.appendChild(valueText);
+    column.appendChild(bar);
+    barsBox.appendChild(column);
+    columns.push({ column: column, bar: bar, heightPercent: heightPercent, hourData: hourData });
+
+    column.addEventListener("click", function () { selectColumn(column, hourData); });
+
+    // the hour label under the bar (every 3rd hour on phones)
+    const label = document.createElement("span");
+    label.textContent = formatHour(hourData.hour);
+    if (hourData.hour % 3 !== 0) label.classList.add("minor");
+    if (hourData.hour === currentHour) { label.classList.add("now"); label.classList.remove("minor"); }
+    labelsBox.appendChild(label);
+  });
+
+  plot.appendChild(barsBox);
+  chartElement.appendChild(plot);
+  chartElement.appendChild(labelsBox);
+
+  function selectColumn(column, hourData) {
+    columns.forEach(function (c) { c.column.classList.remove("selected"); });
+    column.classList.add("selected");
+    showHourDetail(detailElement, hourData);
+  }
+
+  // select the current hour first (or the first hour that has data)
+  const start = columns.find(function (c) { return c.hourData.hour === currentHour; }) ||
+                columns.find(function (c) { return c.hourData.aqi !== null; }) || columns[0];
+  if (start) selectColumn(start.column, start.hourData);
+
+  // bars grow from 0 to their height (one gentle animation)
+  setTimeout(function () {
+    columns.forEach(function (c, i) {
+      c.bar.style.transitionDelay = (i * 18) + "ms";
+      c.bar.style.height = c.heightPercent + "%";
+    });
+  }, 60);
+}
+
+function displayWeather() {
+  const box = $("weather");
+  if (!airData.weather) {
+    $("weather-card").hidden = true;   // no weather? just hide the card
+    return;
+  }
+  $("weather-card").hidden = false;
+  const w = airData.weather.current;
+  const u = airData.weather.units;
+  box.innerHTML =
+    '<div class="weather-item"><div class="icon">🌡</div><strong>' + Math.round(w.temperature_2m) + (u.temperature_2m || "°C") + '</strong><span>Temperature</span></div>' +
+    '<div class="weather-item"><div class="icon">💧</div><strong>' + Math.round(w.relative_humidity_2m) + (u.relative_humidity_2m || "%") + '</strong><span>Humidity</span></div>' +
+    '<div class="weather-item"><div class="icon">💨</div><strong>' + Math.round(w.wind_speed_10m) + " " + (u.wind_speed_10m || "km/h") + '</strong><span>Wind speed</span></div>';
+}
+
+function displayPollutants() {
+  const mainBox = $("pollutants-main");
+  const moreBox = $("pollutants-more");
+  mainBox.innerHTML = "";
+  moreBox.innerHTML = "";
+
+  POLLUTANTS.forEach(function (p) {
+    const value = airData.pollutants[p.key];
+    if (value === null || value === undefined) return;   // skip pollutants the API did not give us
+    const unit = airData.units[p.key] || "µg/m³";
+    const card = document.createElement("div");
+    card.className = "pollutant" + (p.main ? " main" : "");
+    card.innerHTML =
+      "<h3>" + p.name + "</h3>" +
+      '<p class="pollutant-value">' + formatNumber(value) + " <small>" + unit + "</small></p>" +
+      '<p class="pollutant-desc">' + p.desc + "</p>" +
+      (p.who ? '<p class="pollutant-who">WHO daily guideline: ' + p.who + " µg/m³</p>" : "");
+    (p.main ? mainBox : moreBox).appendChild(card);
+  });
+
+  if (mainBox.children.length === 0) {
+    mainBox.innerHTML = '<p class="muted">Pollutant details are not available for this location.</p>';
+  }
+  $("pollutants-more-wrap").hidden = moreBox.children.length === 0;
+}
+
+function displayGroups() {
+  const level = getAQICategory(airData.currentAQI);
+  $("group-cards").innerHTML = GROUPS.map(function (group) {
+    return '<div class="group-card" style="--c:' + level.color + '">' +
+      '<div class="icon">' + group.icon + '</div>' +
+      '<h3>' + group.name + '</h3>' +
+      '<p>' + getGroupAdvice(group.id, airData.currentAQI) + '</p></div>';
+  }).join("");
+}
+
+// Activity cards (howMany = 4 on Home, 5 on the Health page)
+function displayActivities(containerElement, howMany) {
+  containerElement.innerHTML = ACTIVITIES.slice(0, howMany).map(function (activity) {
+    const status = getActivityStatus(activity, airData.currentAQI);
+    const note = { ok: "Good conditions right now.", caution: "Take it easy and keep sessions shorter.", avoid: "Move indoors, or keep it short." }[status.key];
+    return '<div class="activity">' +
+      '<div class="icon">' + activity.icon + '</div>' +
+      '<h3>' + activity.name + '</h3>' +
+      '<span class="pill ' + status.key + '">' + status.icon + " " + status.label + '</span>' +
+      '<p>' + note + '</p></div>';
+  }).join("");
+}
+
+function displayTodayPage() {
+  $("today-place").textContent = airData.placeLabel;
+  $("today-date").textContent = airData.dateText;
+  createHourlyChart($("today-chart"), $("today-detail"), airData.hourly, airData.currentHour, true);
+
+  const stats = airData.stats;
+  const info = airData.bestInfo;
+  let html = "";
+
+  if (stats) {
+    [["Lowest AQI", stats.lowest], ["Highest AQI", stats.highest]].forEach(function (item) {
+      const level = getAQICategory(item[1].aqi);
+      html += '<div class="stat-card" style="--c:' + level.color + '">' +
+        '<h3>' + item[0] + '</h3>' +
+        '<div class="stat-time">' + formatHourFull(item[1].hour) + '</div>' +
+        '<div class="stat-aqi">AQI <strong>' + item[1].aqi + '</strong></div>' +
+        '<span class="badge" style="background:' + level.color + ';color:' + level.badgeText + '">' + level.name + '</span></div>';
+    });
+  }
+
+  // Best outdoor period
+  if (info.best) {
+    const level = getAQICategory(info.best.average);
+    html += '<div class="stat-card" style="--c:' + level.color + '">' +
+      '<h3>Best Outdoor Period</h3>' +
+      '<div class="stat-time">' + formatPeriod(info.best) + '</div>' +
+      '<div class="stat-aqi">Average AQI <strong>' + info.best.average + '</strong></div>' +
+      '<p class="tiny muted" style="margin-top:8px">' + (info.alreadyPassed ? "Earlier today." : "From now until the end of today.") + '</p></div>';
+  } else {
+    html += '<div class="stat-card" style="--c:#cbd5e1">' +
+      '<h3>Best Outdoor Period</h3>' +
+      '<div class="stat-time" style="font-size:1.2rem">No clean period today</div>' +
+      '<p class="tiny muted" style="margin-top:8px">No particularly clean period was found today.</p></div>';
+  }
+
+  if (stats) {
+    const avgLevel = getAQICategory(stats.average);
+    html += '<div class="stat-card" style="--c:' + avgLevel.color + '">' +
+      '<h3>Average AQI Today</h3>' +
+      '<div class="stat-time">' + stats.average + '</div>' +
+      '<span class="badge" style="background:' + avgLevel.color + ';color:' + avgLevel.badgeText + '">' + avgLevel.name + '</span></div>';
+  }
+  $("today-stats").innerHTML = html;
+}
+
+// The "What does each AQI level mean?" cards (highlights the current one)
+function renderLevels(currentLevel) {
+  $("levels-grid").innerHTML = AQI_LEVELS.map(function (level) {
+    const isCurrent = level === currentLevel;
+    return '<div class="level-card' + (isCurrent ? " current" : "") + '" style="--c:' + level.color + '">' +
+      '<div class="level-range">AQI ' + level.range + '</div>' +
+      '<h3>' + level.name + '</h3>' +
+      '<p>' + level.meaning + '</p>' +
+      (isCurrent ? '<span class="here-tag">Right now</span>' : "") + '</div>';
+  }).join("");
+}
+
+function displayHealthPage() {
+  const level = getAQICategory(airData.currentAQI);
+  const live = $("health-live");
+  live.style.setProperty("--aqi-color", level.color);
+  live.style.setProperty("--aqi-ink", level.ink);
+  live.style.setProperty("--aqi-soft", level.color + "26");
+
+  $("health-live-place").textContent = "Right now in " + airData.placeLabel;
+  $("health-live-aqi").textContent = airData.currentAQI;
+  const badge = $("health-live-category");
+  badge.textContent = level.name;
+  badge.style.background = level.color;
+  badge.style.color = level.badgeText;
+  $("health-live-tip").textContent = getRecommendation(airData.currentAQI);
+
+  renderLevels(level);
+  $("health-activities-intro").textContent = "Suggestions for " + airData.placeLabel + " at AQI " + airData.currentAQI + ".";
+  displayActivities($("health-activities"), ACTIVITIES.length);
+}
+
+// AI Advisor
+function buildAdvisorButtons() {
+  const box = $("advisor-buttons");
+  box.innerHTML = "";
+  ADVISOR_QUESTIONS.forEach(function (q) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chip";
+    button.textContent = q.label;
+    button.addEventListener("click", function () {
+      advisorQuestion = q.id;
+      showAdvice();
+    });
+    box.appendChild(button);
+  });
+}
+
+function showAdvice() {
+  const answerBox = $("advisor-answer");
+  document.querySelectorAll("#advisor-buttons .chip").forEach(function (button, i) {
+    button.classList.toggle("active", ADVISOR_QUESTIONS[i].id === advisorQuestion);
+  });
+
+  if (!advisorQuestion || !airData) {
+    answerBox.innerHTML = "<p>Choose a question above to get advice based on today's AQI.</p>";
+    return;
+  }
+  answerBox.innerHTML = "<h3>AirWise Recommendation</h3><p></p>";
+  answerBox.querySelector("p").textContent = getAdvice(advisorQuestion);   // textContent is the safe way to insert text
+  answerBox.classList.remove("fresh");
+  void answerBox.offsetWidth;          // restarts the little animation
+  answerBox.classList.add("fresh");
+}
+
+// Legend under the charts
+function buildLegend() {
+  const html = AQI_LEVELS.map(function (level) {
+    return '<span class="legend-item"><i style="background:' + level.color + '"></i>' + level.name + " (" + level.range + ")</span>";
+  }).join("") + '<span class="legend-item">Faded bars are hours that have passed. Outlined bar is now.</span>';
+  document.querySelectorAll(".legend").forEach(function (el) { el.innerHTML = html; });
+}
+
+// Show or hide everything that needs data
+function setDataVisible(hasData) {
+  $("results").hidden = !hasData;
+  $("today-content").hidden = !hasData;
+  $("health-live").hidden = !hasData;
+  $("health-activities-wrap").hidden = !hasData;
+  document.querySelectorAll(".empty-note").forEach(function (note) { note.hidden = hasData; });
+}
+
+// Put all the data on the page
+function displayAll() {
+  setDataVisible(true);
+  displayAQI();
+  displayBestTime();
+  createHourlyChart($("home-chart"), $("home-detail"), airData.hourly, airData.currentHour, false);
+  displayWeather();
+  displayPollutants();
+  displayGroups();
+  displayActivities($("activity-cards"), 4);
+  displayTodayPage();
+  displayHealthPage();
+  showAdvice();
+  $("footer-source").textContent =
+    "Data source: Open-Meteo Air Quality API (CAMS model data). AQI standard: US EPA AQI. Last updated: " + airData.updatedText + ".";
+}
+
+
+/* ---------------------------------------------------------------------
+   6. PROGRAM FLOW — buttons, navigation and starting the app
+   --------------------------------------------------------------------- */
+
+// Turn API / network problems into messages people can understand
+function friendlyError(error) {
+  if (error instanceof TypeError) {
+    return "We could not reach the air-quality service. Check your internet connection and try again.";
+  }
+  return error.message;
+}
+
+// Load and show data for one place
+async function loadLocation(place, shouldScroll) {
+  const requestNumber = ++latestRequest;
+  showLoading(true);
+  hideError();
+  try {
+    // ask for air quality and weather at the same time
+    const results = await Promise.all([getAQIData(place), getWeatherData(place)]);
+    if (requestNumber !== latestRequest) return;      // a newer search started, ignore this one
+    airData = buildAirData(place, results[0], results[1]);
+    displayAll();
+    if (shouldScroll) $("results").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (error) {
+    if (requestNumber !== latestRequest) return;
+    airData = null;                                   // never show old or fake data after an error
+    setDataVisible(false);
+    showError(friendlyError(error));
+  } finally {
+    if (requestNumber === latestRequest) showLoading(false);
+  }
+}
+
+// Show "other matches" for names like "Lalitpur" that exist in several countries
+function renderAlternatives(results, chosen) {
+  const box = $("alt-matches");
+  box.innerHTML = "";
+  const others = results.filter(function (r) { return r !== chosen; }).slice(0, 4);
+  if (others.length === 0) { box.hidden = true; return; }
+
+  const label = document.createElement("span");
+  label.className = "chips-label";
+  label.textContent = "Other matches:";
+  box.appendChild(label);
+
+  others.forEach(function (place) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "chip";
+    chip.textContent = [place.name, place.region, place.country].filter(Boolean).join(", ");
+    chip.addEventListener("click", function () {
+      renderAlternatives(results, place);
+      loadLocation(place, true);
+    });
+    box.appendChild(chip);
+  });
+  box.hidden = false;
+}
+
+// Search for a city name, then load the first match
+async function searchAndLoad(cityName, shouldScroll) {
+  if (!cityName) {
+    showError("Please type a city name first.");
+    return;
+  }
+  hideError();
+  showLoading(true);
+  try {
+    const results = await searchLocation(cityName);
+    renderAlternatives(results, results[0]);
+    await loadLocation(results[0], shouldScroll);
+  } catch (error) {
+    latestRequest++;
+    airData = null;
+    setDataVisible(false);
+    $("alt-matches").hidden = true;
+    showLoading(false);
+    showError(friendlyError(error));
+  }
+}
+
+// Navigation between the 4 pages (they live in one file, so nothing reloads)
+function showPage(name) {
+  const pages = ["home", "today", "health", "about"];
+  if (!pages.includes(name)) name = "home";
+  pages.forEach(function (p) { $("page-" + p).hidden = (p !== name); });
+  document.querySelectorAll(".nav a").forEach(function (link) {
+    link.classList.toggle("active", link.dataset.page === name);
+  });
+  window.scrollTo(0, 0);
+  if (name === "today" && airData) displayTodayPage();   // replays the bar animation
+}
+
+// Start everything
+function init() {
+  buildLegend();
+  renderLevels(null);
+  buildAdvisorButtons();
+  showAdvice();
+  setDataVisible(false);
+
+  // Search form
+  $("search-form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    searchAndLoad($("city-input").value.trim(), true);
+  });
+
+  // Quick city buttons
+  document.querySelectorAll("[data-city]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      $("city-input").value = button.dataset.city;
+      searchAndLoad(button.dataset.city, true);
+    });
+  });
+
+  // "Use My Location" (the browser will ask for permission)
+  $("geo-btn").addEventListener("click", function () {
+    if (!navigator.geolocation) {
+      showError("Your browser does not support location. Please type a city instead.");
+      return;
+    }
+    hideError();
+    showLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      function (position) {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        $("alt-matches").hidden = true;
+        $("city-input").value = "";
+        loadLocation({ name: "Your location (" + lat.toFixed(2) + ", " + lon.toFixed(2) + ")", country: "", region: "", latitude: lat, longitude: lon }, true);
+      },
+      function () {
+        showLoading(false);
+        showError("We could not get your location. Allow location access in your browser, or search for a city.");
+      }
+    );
+  });
+
+  // Page navigation using the # in the address bar
+  window.addEventListener("hashchange", function () { showPage(location.hash.slice(1)); });
+  showPage(location.hash.slice(1));
+
+  // Load the default city so the site is never empty
+  $("city-input").value = DEFAULT_CITY;
+  searchAndLoad(DEFAULT_CITY, false);
+}
+
+init();
+</script>
+</body>
+</html>
